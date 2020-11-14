@@ -1,5 +1,5 @@
 import re
-from concurrent.futures._base import Future
+from concurrent.futures import Future
 
 import requests
 import concurrent.futures
@@ -8,9 +8,9 @@ from collections import deque
 
 URL = r'http(s)?://[^/]+'
 ABSOLUTE_ADDRESS = r'http(s)?://'
-TOTAL_URLS_TO_SCRAPE = 5
 TOTAL_URLS_TO_PROCESS = 100
 SUCCESS_STATUS_CODE = 200
+MAX_WORKER_THREADS = 50
 
 prev_urls = set()
 urls_queue = deque()
@@ -52,18 +52,12 @@ def task(url: str) -> (bool, [str]):
     # checks if request has succeeded
     if response.status_code == SUCCESS_STATUS_CODE:
         parser = BeautifulSoup(response.content, 'html.parser', from_encoding="iso-8859-1")
-        print(url)
         return True, parse_links(url, parser)
 
     return False, []
 
 
-def process_futures(futures: {Future, str}):
-    # check status of futures currently working
-    done, not_done = concurrent.futures.wait(
-        futures, None,
-        return_when=concurrent.futures.FIRST_COMPLETED)
-
+def process_futures(futures: {Future, str}, done: [Future]):
     # processes any completed futures
     for future in done:
         url = futures[future]
@@ -81,16 +75,13 @@ def scrape_links(base_url: str) -> None:
     urls_queue.append(base_url)
     processed_urls = 0
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKER_THREADS) as executor:
         futures = dict()
+        not_done = []
 
-        while True:
+        while processed_urls < TOTAL_URLS_TO_PROCESS and (len(urls_queue) != 0 or len(not_done) != 0):
             # processes any incoming urls
-            while len(urls_queue) != 0:
-                if processed_urls >= TOTAL_URLS_TO_PROCESS:
-                    process_futures(futures)
-                    return
-
+            while len(urls_queue) != 0 and processed_urls < TOTAL_URLS_TO_PROCESS:
                 next_url = urls_queue.pop()
 
                 # checks whether url has already been scraped to prevent loops
@@ -99,9 +90,14 @@ def scrape_links(base_url: str) -> None:
 
                 futures[executor.submit(task, next_url)] = next_url
                 processed_urls += 1
+                print(next_url, processed_urls)
                 prev_urls.add(next_url)
 
-            process_futures(futures)
+            done, not_done = concurrent.futures.wait(
+                futures, timeout=0.25,
+                return_when=concurrent.futures.FIRST_COMPLETED)
+
+            process_futures(futures, done)
 
 
 def main() -> None:
