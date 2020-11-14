@@ -3,16 +3,18 @@ import requests
 from bs4 import BeautifulSoup
 from collections import deque
 
-ROOT_URL = r'http(s)?://[^/]+'
+URL = r'http(s)?://[^/]+'
 ABSOLUTE_ADDRESS = r'http(s)?://'
+TOTAL_URLS_TO_SCRAPE = 10
+SUCCESS_STATUS_CODE = 200
 
-unique_urls = set()
+prev_urls = set()
 urls_queue = deque()
 
 
 def get_relative_url(url: str, link: str) -> str:
     if link.startswith('/'):
-        root_url = re.match(ROOT_URL, url).group(0)
+        root_url = re.match(URL, url).group(0)
         return root_url + link
     else:
         return url + '/' + link
@@ -42,24 +44,30 @@ def scrape_links(base_url: str) -> None:
     num_urls_scraped = 1
     urls_queue.append(base_url)
 
-    while num_urls_scraped <= 10:
+    while num_urls_scraped <= TOTAL_URLS_TO_SCRAPE:
         next_url = urls_queue.pop()
 
         # Checks whether url has already been scraped to prevent loops
-        if next_url not in unique_urls:
-            response = requests.get(next_url)
+        if next_url in prev_urls:
+            continue
 
-            # Checks if request has succeeded
-            if response.status_code == 200:
-                unique_urls.add(next_url)
-                parser = BeautifulSoup(response.content, 'html.parser')
-                parse_links(next_url, parser)
-                print(next_url)
-                num_urls_scraped += 1
+        response = requests.get(next_url)
+
+        # Checks if request has succeeded
+        if response.status_code == SUCCESS_STATUS_CODE:
+            prev_urls.add(next_url)
+            parser = BeautifulSoup(response.content, 'html.parser')
+            parse_links(next_url, parser)
+            print(next_url)
+            num_urls_scraped += 1
 
 
 def main() -> None:
-    base_url = input("Please enter a starting URL: ")
+    base_url = input("Please enter a valid starting URL: ")
+
+    while not re.match(URL, base_url):
+        base_url = input("The url \"{}\" is invalid. Please enter a valid starting URL: ".format(base_url))
+
     scrape_links(base_url)
 
 
