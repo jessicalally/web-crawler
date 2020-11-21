@@ -6,6 +6,8 @@ import concurrent.futures
 from bs4 import BeautifulSoup
 from collections import deque
 
+from typing import Set
+
 URL = r'http(s)?://[^/]+'
 ABSOLUTE_ADDRESS = r'http(s)?://'
 TOTAL_URLS_TO_PROCESS = 100
@@ -32,7 +34,7 @@ def get_url(base_url: str, link: str) -> str:
         return get_relative_url(base_url, link)
 
 
-def parse_links(base_url: str, parser: BeautifulSoup) -> [str]:
+def parse_links(base_url: str, parser: BeautifulSoup) -> Set[str]:
     links = set()
 
     for link in parser.findAll('a'):
