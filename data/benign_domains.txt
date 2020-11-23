@@ -26,3 +26,5 @@ tiktok.com
 businessinsider.com.au
 cloudflare.com
 ms.com
+facebook.co
+messenger.com

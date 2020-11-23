@@ -1,17 +1,19 @@
-import re
-from concurrent.futures.thread import ThreadPoolExecutor
-
-import requests
+import argparse
 import concurrent.futures
-
-from bs4 import BeautifulSoup
+import re
 from collections import deque
 from concurrent.futures import Future
+from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Set
+
+import requests
+from bs4 import BeautifulSoup
 from requests import RequestException
 
 URL = r'http(s)?://[^/]+'
 ABSOLUTE_ADDRESS = r'http(s)?://'
+PROTOCOL = r'^http(s)?://'
+PATH = r'/.*$'
 TOTAL_URLS_TO_SCRAPE = 100
 SUCCESS_STATUS_CODE = 200
 MAX_WORKER_THREADS = 50
@@ -60,8 +62,9 @@ def _task(url: str) -> (bool, [str]):
 
 def _is_excluded(url: str, excluded_urls: [str]) -> bool:
     # checks if the url is in the excluded_urls
-    url = re.sub(r'^http(s)?://', '', url)
-    url = re.sub(r'/.*$', '', url)
+    # strips url to just its domain
+    url = re.sub(PROTOCOL, '', url)
+    url = re.sub(PATH, '', url)
     url = re.split(r'\.', url)
 
     for excluded_url in excluded_urls:
@@ -96,7 +99,7 @@ class WebCrawler:
                     self._successful_urls.add(url)
                     self._urls_queue.extend(links)
 
-    def scrape_links(self, base_urls: Set[str], excluded_urls=None) -> Set[str]:
+    def scrape_links(self, base_urls: Set[str], verbose: bool, excluded_urls=None) -> Set[str]:
         if excluded_urls is None:
             excluded_urls = []
 
@@ -108,14 +111,17 @@ class WebCrawler:
 
             while len(self._successful_urls) < TOTAL_URLS_TO_SCRAPE \
                     and (len(self._urls_queue) != 0 or len(not_done) != 0):
-                # processes any incoming urls
+                # process any incoming urls
 
                 if len(self._urls_queue) > 0:
                     next_url = self._urls_queue.pop()
 
-                    # checks whether url has already been scraped to prevent loops
+                    # checks whether url has already been scraped to prevent loops, or if it should be excluded
                     if next_url in self._prev_urls or _is_excluded(next_url, excluded_urls):
                         continue
+
+                    if verbose:
+                        print("crawling: " + next_url)
 
                     futures[executor.submit(_task, next_url)] = next_url
                     self._prev_urls.add(next_url)
@@ -133,12 +139,15 @@ class WebCrawler:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+    args = parser.parse_args()
     base_url = input("Please enter a valid starting URL: ")
 
     while not re.match(URL, base_url):
         base_url = input("The url \"{}\" is invalid. Please enter a valid starting URL: ".format(base_url))
 
-    links = WebCrawler().scrape_links({base_url})
+    links = WebCrawler().scrape_links({base_url}, args.verbose)
     print('\n'.join(link for link in links))
 
 
