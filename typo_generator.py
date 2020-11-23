@@ -6,7 +6,8 @@ def generate_duplications(input_str: str) -> Set[str]:
     typos = set()
 
     for i in range(0, len(input_str)):
-        typos.add(input_str[:i] + input_str[i] + input_str[i::])
+        if input_str[i] not in "./":
+            typos.add(input_str[:i] + input_str[i] + input_str[i::])
 
     return typos
 

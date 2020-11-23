@@ -1,16 +1,18 @@
 import re
-from concurrent.futures import Future
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import requests
 import concurrent.futures
+
 from bs4 import BeautifulSoup
 from collections import deque
-
+from concurrent.futures import Future
 from typing import Set
+from requests import RequestException
 
 URL = r'http(s)?://[^/]+'
 ABSOLUTE_ADDRESS = r'http(s)?://'
-TOTAL_URLS_TO_PROCESS = 100
+TOTAL_URLS_TO_SCRAPE = 100
 SUCCESS_STATUS_CODE = 200
 MAX_WORKER_THREADS = 50
 
@@ -56,10 +58,27 @@ def _task(url: str) -> (bool, [str]):
     return False, []
 
 
+def _is_excluded(url: str, excluded_urls: [str]) -> bool:
+    # checks if the url is in the excluded_urls
+    url = re.sub(r'^http(s)?://', '', url)
+    url = re.sub(r'/.*$', '', url)
+    url = re.split(r'\.', url)
+
+    for excluded_url in excluded_urls:
+        excluded_url = re.split(r'\.', excluded_url)
+        num_to_drop = len(url) - len(excluded_url)
+
+        if url[num_to_drop:] == excluded_url:
+            return True
+
+    return False
+
+
 class WebCrawler:
     def __init__(self):
         self._urls_queue = deque()
         self._prev_urls = set()
+        self._successful_urls = set()
 
     def _process_futures(self, futures: {Future, str}, done: [Future]):
         # processes any completed futures
@@ -68,31 +87,37 @@ class WebCrawler:
 
             try:
                 (success, links) = future.result()
-            except Exception as exc:
-                print("The scraped url %s generated an exception: %s" % (url, exc))
+            except (RequestException, UnicodeError) as exc:
+                # TODO: add print error message if verbose flag is set
+                # print("The scraped url %s generated an exception: %s" % (url, exc))
+                pass
             else:
                 if success:
+                    self._successful_urls.add(url)
                     self._urls_queue.extend(links)
 
-    def scrape_links(self, base_url: str) -> set:
-        self._urls_queue.append(base_url)
-        processed_urls = 0
+    def scrape_links(self, base_urls: Set[str], excluded_urls=None) -> Set[str]:
+        if excluded_urls is None:
+            excluded_urls = []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKER_THREADS) as executor:
+        self._urls_queue.extend(base_urls)
+
+        with ThreadPoolExecutor(max_workers=MAX_WORKER_THREADS) as executor:
             futures = dict()
             not_done = []
 
-            while processed_urls < TOTAL_URLS_TO_PROCESS and (len(self._urls_queue) != 0 or len(not_done) != 0):
+            while len(self._successful_urls) < TOTAL_URLS_TO_SCRAPE \
+                    and (len(self._urls_queue) != 0 or len(not_done) != 0):
                 # processes any incoming urls
-                while len(self._urls_queue) != 0 and processed_urls < TOTAL_URLS_TO_PROCESS:
+
+                if len(self._urls_queue) > 0:
                     next_url = self._urls_queue.pop()
 
                     # checks whether url has already been scraped to prevent loops
-                    if next_url in self._prev_urls:
+                    if next_url in self._prev_urls or _is_excluded(next_url, excluded_urls):
                         continue
 
                     futures[executor.submit(_task, next_url)] = next_url
-                    processed_urls += 1
                     self._prev_urls.add(next_url)
 
                 done, not_done = concurrent.futures.wait(
@@ -101,7 +126,10 @@ class WebCrawler:
 
                 self._process_futures(futures, done)
 
-        return self._prev_urls
+                for future in done:
+                    del futures[future]
+
+        return self._successful_urls
 
 
 def main() -> None:
@@ -110,7 +138,7 @@ def main() -> None:
     while not re.match(URL, base_url):
         base_url = input("The url \"{}\" is invalid. Please enter a valid starting URL: ".format(base_url))
 
-    links = WebCrawler().scrape_links(base_url)
+    links = WebCrawler().scrape_links({base_url})
     print('\n'.join(link for link in links))
 
 
