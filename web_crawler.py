@@ -10,11 +10,10 @@ import requests
 from bs4 import BeautifulSoup
 from requests import RequestException
 
-URL = r'http(s)?://[^/]+'
-ABSOLUTE_ADDRESS = r'http(s)?://'
-PROTOCOL = r'^http(s)?://'
-PATH = r'/.*$'
-TOTAL_URLS_TO_SCRAPE = 100
+URL = re.compile('http(s)?://[^/]+')
+PROTOCOL = re.compile('^http(s)?://')
+PATH = re.compile('/.*$')
+DEFAULT_NUM_URLS_TO_SCRAPE = 100
 SUCCESS_STATUS_CODE = 200
 MAX_WORKER_THREADS = 50
 
@@ -28,7 +27,7 @@ def get_relative_url(url: str, link: str) -> str:
 
 
 def get_url(base_url: str, link: str) -> str:
-    is_absolute_address = re.match(ABSOLUTE_ADDRESS, link)
+    is_absolute_address = re.match(PROTOCOL, link)
 
     if is_absolute_address:
         return link
@@ -83,7 +82,7 @@ class WebCrawler:
         self._prev_urls = set()
         self._successful_urls = set()
 
-    def _process_futures(self, futures: {Future, str}, done: [Future]):
+    def _process_futures(self, futures: {Future, str}, done: [Future], verbose: bool):
         # processes any completed futures
         for future in done:
             url = futures[future]
@@ -91,17 +90,19 @@ class WebCrawler:
             try:
                 (success, links) = future.result()
             except (RequestException, UnicodeError) as exc:
-                # TODO: add print error message if verbose flag is set
-                # print("The scraped url %s generated an exception: %s" % (url, exc))
-                pass
+                if verbose:
+                    print("The scraped url %s generated an exception: %s" % (url, exc))
             else:
                 if success:
                     self._successful_urls.add(url)
                     self._urls_queue.extend(links)
 
-    def scrape_links(self, base_urls: Set[str], verbose: bool, excluded_urls=None) -> Set[str]:
+    def scrape_links(self, base_urls: Set[str], verbose: bool, num_urls=None, excluded_urls=None) -> Set[str]:
         if excluded_urls is None:
             excluded_urls = []
+
+        if num_urls is None:
+            num_urls = DEFAULT_NUM_URLS_TO_SCRAPE
 
         self._urls_queue.extend(base_urls)
 
@@ -109,8 +110,7 @@ class WebCrawler:
             futures = dict()
             not_done = []
 
-            while len(self._successful_urls) < TOTAL_URLS_TO_SCRAPE \
-                    and (len(self._urls_queue) != 0 or len(not_done) != 0):
+            while len(self._successful_urls) < num_urls and (len(self._urls_queue) != 0 or len(not_done) != 0):
                 # process any incoming urls
 
                 if len(self._urls_queue) > 0:
@@ -130,7 +130,7 @@ class WebCrawler:
                     futures, timeout=0.25,
                     return_when=concurrent.futures.FIRST_COMPLETED)
 
-                self._process_futures(futures, done)
+                self._process_futures(futures, done, verbose)
 
                 for future in done:
                     del futures[future]
@@ -139,15 +139,14 @@ class WebCrawler:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--verbose", help="increase output verbosity", action="store_true")
+    parser = argparse.ArgumentParser(description="Crawls input url with optional num urls to scrape")
+    parser.add_argument("-v", "--verbose", help="Increase output verbosity", action="store_true")
+    parser.add_argument("url", type=str, help="Input url to crawl")
+    parser.add_argument("--num_urls", type=int, help="Number of valid urls to crawl")
     args = parser.parse_args()
-    base_url = input("Please enter a valid starting URL: ")
 
-    while not re.match(URL, base_url):
-        base_url = input("The url \"{}\" is invalid. Please enter a valid starting URL: ".format(base_url))
+    links = WebCrawler().scrape_links({args.url}, args.verbose, args.num_urls)
 
-    links = WebCrawler().scrape_links({base_url}, args.verbose)
     print('\n'.join(link for link in links))
 
 
