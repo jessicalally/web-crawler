@@ -18,6 +18,7 @@ SUCCESS_STATUS_CODE = 200
 MAX_WORKER_THREADS = 50
 
 
+# Converts a relative url to an absolute url
 def get_relative_url(url: str, link: str) -> str:
     if link.startswith('/'):
         root_url = re.match(URL, url).group(0)
@@ -26,17 +27,18 @@ def get_relative_url(url: str, link: str) -> str:
         return url + '/' + link
 
 
+# Checks if url is an absolute url or relative url
 def get_url(base_url: str, link: str) -> str:
     is_absolute_address = re.match(PROTOCOL, link)
 
     if is_absolute_address:
         return link
     elif '#' not in link:
-        # we want to ignore links to other sections of the same webpage as we have already
-        # scraped the urls on the whole of this page
+        # We want to ignore links to other sections of the webpage as we have already scraped all urls from this page
         return get_relative_url(base_url, link)
 
 
+# Parses links on given url
 def parse_links(base_url: str, parser: BeautifulSoup) -> Set[str]:
     links = set()
 
@@ -48,10 +50,10 @@ def parse_links(base_url: str, parser: BeautifulSoup) -> Set[str]:
     return links
 
 
+# Requests url and checks if request has succeeded
 def _task(url: str) -> (bool, [str]):
     response = requests.get(url)
 
-    # checks if request has succeeded
     if response.status_code == SUCCESS_STATUS_CODE:
         parser = BeautifulSoup(response.content, 'html.parser', from_encoding="iso-8859-1")
         return True, parse_links(url, parser)
@@ -59,9 +61,9 @@ def _task(url: str) -> (bool, [str]):
     return False, []
 
 
+# Checks if the url is contained in the excluded urls
 def _is_excluded(url: str, excluded_urls: [str]) -> bool:
-    # checks if the url is in the excluded_urls
-    # strips url to just its domain
+    # Strips url to just its domain
     url = re.sub(PROTOCOL, '', url)
     url = re.sub(PATH, '', url)
     url = re.split(r'\.', url)
@@ -82,8 +84,8 @@ class WebCrawler:
         self._prev_urls = set()
         self._successful_urls = set()
 
+    # Processes any completed futures
     def _process_futures(self, futures: {Future, str}, done: [Future], verbose: bool):
-        # processes any completed futures
         for future in done:
             url = futures[future]
 
@@ -97,6 +99,7 @@ class WebCrawler:
                     self._successful_urls.add(url)
                     self._urls_queue.extend(links)
 
+    # Crawls
     def scrape_links(self, base_urls: Set[str], verbose: bool, num_urls=None, excluded_urls=None) -> Set[str]:
         if excluded_urls is None:
             excluded_urls = []
@@ -111,12 +114,12 @@ class WebCrawler:
             not_done = []
 
             while len(self._successful_urls) < num_urls and (len(self._urls_queue) != 0 or len(not_done) != 0):
-                # process any incoming urls
+                # Process any incoming urls
 
                 if len(self._urls_queue) > 0:
                     next_url = self._urls_queue.pop()
 
-                    # checks whether url has already been scraped to prevent loops, or if it should be excluded
+                    # Checks whether the url has already been scraped to prevent loops, or if it should be excluded
                     if next_url in self._prev_urls or _is_excluded(next_url, excluded_urls):
                         continue
 

@@ -1,8 +1,8 @@
 from typing import Set
 
 
+# Generates typos which duplicates a character
 def generate_duplications(input_str: str) -> Set[str]:
-    # adds a duplicate of each character
     typos = set()
 
     for i in range(0, len(input_str)):
@@ -12,8 +12,8 @@ def generate_duplications(input_str: str) -> Set[str]:
     return typos
 
 
+# Generates typos with a character removed
 def generate_removals(input_str: str) -> Set[str]:
-    # removes each character
     typos = set()
 
     for i in range(0, len(input_str)):
@@ -22,8 +22,8 @@ def generate_removals(input_str: str) -> Set[str]:
     return typos
 
 
+# Generates typos with adjacent characters swapped
 def generate_swaps(input_str: str) -> Set[str]:
-    # swaps adjacent characters
     typos = set()
 
     for i in range(1, len(input_str) - 1):
