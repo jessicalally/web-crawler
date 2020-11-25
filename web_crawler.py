@@ -99,7 +99,7 @@ class WebCrawler:
                     self._successful_urls.add(url)
                     self._urls_queue.extend(links)
 
-    # Crawls
+    # Scrapes links from webpages until it has crawled num_urls
     def scrape_links(self, base_urls: Set[str], verbose: bool, num_urls=None, excluded_urls=None) -> Set[str]:
         if excluded_urls is None:
             excluded_urls = []
